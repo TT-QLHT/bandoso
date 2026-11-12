@@ -1,4 +1,4 @@
-// PHIÊN BẢN 12/11/2026 17:45 – thu gọn bảng PCTT, nạp chức năng sửa điểm PCTT
+// PHIÊN BẢN 12/11/2026 17:50 – ẩn QL/ĐT màu đen (DT.geojson), chỉ hiện tuyến được chọn
 // =====================================================================
 // LỚP KCHT TTQLHT (bổ sung 11/2026)
 // Dữ liệu: KCHT_TTQLHT.geojson – chuyển từ KMZ "KCHT_GT_TTQLHT_tong_hop_ra_soat_ban_do"
@@ -149,11 +149,29 @@
         return true;
     }
 
+    // (11/2026) Ẩn các tuyến QL/ĐT màu đen của DT.geojson khi mở trang.
+    // Chọn tên tuyến ở ô "Chọn tên đường" thì chỉ hiện tuyến đó; muốn xem tất cả: tích lớp
+    // "Quốc lộ, đường tỉnh – toàn bộ (nền cũ)" trong "Chọn loại bản đồ".
+    const dtChosen = L.layerGroup().addTo(map);
+    (function hideDt(n) {
+        if (typeof dtLayer !== 'undefined' && dtLayer && dtLayer.getLayers().length) {
+            if (map.hasLayer(dtLayer)) map.removeLayer(dtLayer);
+            layerControl.addOverlay(dtLayer, '<span style="color:#000">━</span> Quốc lộ, đường tỉnh – toàn bộ (nền cũ)');
+            return;
+        }
+        if (n < 240) setTimeout(() => hideDt(n + 1), 250);
+    })(0);
+
     // Mở rộng hàm chọn đường sẵn có: tên thuộc lớp KCHT thì xử lý tại đây
     const originalZoomToRoad = window.zoomToRoad;
     window.zoomToRoad = function (roadName) {
-        if (roadName && roadIndex[roadName]) { focusRoad(roadName); return; }
+        if (roadName && roadIndex[roadName]) { dtChosen.clearLayers(); focusRoad(roadName); return; }
         clearChosen();
+        // Tuyến QL/ĐT gốc (DT.geojson, màu đen): chỉ hiện đúng tuyến được chọn
+        dtChosen.clearLayers();
+        if (roadName && typeof dtLayer !== 'undefined' && dtLayer) {
+            dtLayer.eachLayer(l => { if (l.feature && l.feature.properties.name === roadName) dtChosen.addLayer(l); });
+        }
         if (typeof originalZoomToRoad === 'function') originalZoomToRoad(roadName);
     };
 
