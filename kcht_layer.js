@@ -1,4 +1,4 @@
-// PHIÊN BẢN 12/11/2026 17:25 – chỉ hiện tuyến được chọn
+// PHIÊN BẢN 12/11/2026 17:45 – thu gọn bảng PCTT, nạp chức năng sửa điểm PCTT
 // =====================================================================
 // LỚP KCHT TTQLHT (bổ sung 11/2026)
 // Dữ liệu: KCHT_TTQLHT.geojson – chuyển từ KMZ "KCHT_GT_TTQLHT_tong_hop_ra_soat_ban_do"
@@ -16,6 +16,15 @@
     // (11/2026) Khi mở trang KHÔNG tự hiện các điểm PCTT (ngập, sạt lở, tuyến tránh, điểm tập kết).
     // Muốn xem: bấm "Chọn loại bản đồ" và tích lớp cần xem, hoặc bấm một điểm trong bảng PCTT.
     // Nếu đường link có ?tuyen= / ?loai= / ?ma= (chia sẻ, mã QR) thì vẫn hiện như cũ.
+    // Thu gọn bảng "Điểm nguy hiểm mùa mưa bão" khi mở trang (bấm vào tiêu đề để mở ra)
+    try {
+        const pp = document.getElementById('pctt-panel');
+        if (pp && !pp.classList.contains('collapsed') && !new URLSearchParams(location.search).get('tuyen')) {
+            pp.classList.add('collapsed');
+            const tg = document.getElementById('pctt-toggle'); if (tg) tg.textContent = '▸';
+        }
+    } catch (e) { }
+
     try {
         const q0 = new URLSearchParams(location.search);
         if (typeof pcttGroups !== 'undefined' && !q0.get('tuyen') && !q0.get('loai') && !q0.get('ma')) {
@@ -190,6 +199,14 @@
         window.__zaloShareLoaded = true;
         const s = document.createElement('script');
         s.src = 'zalo_share.js?v=20261112';
+        document.body.appendChild(s);
+    });
+    // Tự nạp chức năng chỉnh sửa điểm nguy hiểm PCTT (pctt_admin.js)
+    window.addEventListener('load', function () {
+        if (window.__pcttAdminLoaded || document.querySelector('script[src*="pctt_admin.js"]')) return;
+        window.__pcttAdminLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'pctt_admin.js?v=20261112b';
         document.body.appendChild(s);
     });
 
