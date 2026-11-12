@@ -375,7 +375,8 @@
         // Lớp dữ liệu GeoJSON
         let geoJsonLayer, dtLayer, dt609Layer;
         // Lớp nhãn đường
-        let labelLayer = L.layerGroup().addTo(map);
+                   let labelLayer = L.layerGroup();
+           layerControl.addOverlay(labelLayer, '<span style="color:#fc0202">A</span> Nhãn tên đường (QL, ĐT)');
 
         // Cập nhật nhãn đường theo vùng nhìn
         function updateVisibleLabels() {
