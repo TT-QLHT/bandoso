@@ -12,6 +12,21 @@
 
     const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+    // (11/2026) Khi mở trang KHÔNG tự hiện các điểm PCTT (ngập, sạt lở, tuyến tránh, điểm tập kết).
+    // Muốn xem: bấm "Chọn loại bản đồ" và tích lớp cần xem, hoặc bấm một điểm trong bảng PCTT.
+    // Nếu đường link có ?tuyen= / ?loai= / ?ma= (chia sẻ, mã QR) thì vẫn hiện như cũ.
+    try {
+        const q0 = new URLSearchParams(location.search);
+        if (typeof pcttGroups !== 'undefined' && !q0.get('tuyen') && !q0.get('loai') && !q0.get('ma')) {
+            ['ngap', 'satlo', 'tranh', 'tapket'].forEach(k => { if (pcttGroups[k] && map.hasLayer(pcttGroups[k])) map.removeLayer(pcttGroups[k]); });
+            // Chọn tuyến trong bảng PCTT thì tự bật lại các lớp điểm nguy hiểm
+            const sel = document.getElementById('pctt-tuyen');
+            if (sel) sel.addEventListener('change', function () {
+                if (this.value) ['ngap', 'satlo', 'tranh', 'tapket'].forEach(k => map.addLayer(pcttGroups[k]));
+            });
+        }
+    } catch (e) { }
+
     map.createPane('kchtLines'); map.getPane('kchtLines').style.zIndex = 410;
     map.createPane('kchtPoints'); map.getPane('kchtPoints').style.zIndex = 440;
 
@@ -23,9 +38,9 @@
         ['dt_doan', '<span style="color:#0050e6">━</span> Đường tỉnh – đoạn theo danh mục', false],
         ['do_thi_doan', '<span style="color:#00b8d4">┅</span> Đường đô thị – đoạn cắt theo điểm đầu/cuối', false],
         ['coc_km', '<span>◦</span> Cọc Km tính toán (QL/ĐT)', false],
-        ['cau', '<span style="color:#6a1b9a">▲</span> Cầu (QL, ĐT, nội thị)', true],
+        ['cau', '<span style="color:#6a1b9a">▲</span> Cầu (QL, ĐT, nội thị)', false],
         ['cau_osm', '<span style="color:#9e9e9e">■</span> Cầu trên QL/ĐT chưa có trong danh mục (OSM)', false],
-        ['ham', '<span style="color:#0d47a1">▼</span> Hầm đường bộ', true],
+        ['ham', '<span style="color:#0d47a1">▼</span> Hầm đường bộ', false],
         ['ke_hao', '<span style="color:#795548">ⓘ</span> Kè, hào kỹ thuật, sàn (vị trí tham chiếu)', false]
     ];
     const groups = {};
