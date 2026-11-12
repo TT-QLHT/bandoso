@@ -1,3 +1,4 @@
+// PHIÊN BẢN 12/11/2026 17:25 – chỉ hiện tuyến được chọn
 // =====================================================================
 // LỚP KCHT TTQLHT (bổ sung 11/2026)
 // Dữ liệu: KCHT_TTQLHT.geojson – chuyển từ KMZ "KCHT_GT_TTQLHT_tong_hop_ra_soat_ban_do"
@@ -32,8 +33,6 @@
 
     // Nhóm lớp: [khóa, nhãn trong bảng chọn lớp, bật sẵn?]
     const GROUPS = [
-        ['do_thi', '<span style="color:#00a000">━</span> Đường đô thị TTQLHT quản lý (theo tên)', true],
-        ['tuyen_moi', '<span style="color:#000">━</span> ĐT.601, ĐT.602 (bổ sung)', true],
         ['ql_doan', '<span style="color:#e60000">━</span> Quốc lộ – đoạn theo danh mục', false],
         ['dt_doan', '<span style="color:#0050e6">━</span> Đường tỉnh – đoạn theo danh mục', false],
         ['do_thi_doan', '<span style="color:#00b8d4">┅</span> Đường đô thị – đoạn cắt theo điểm đầu/cuối', false],
@@ -45,6 +44,8 @@
     ];
     const groups = {};
     GROUPS.forEach(g => { groups[g[0]] = L.layerGroup(); });
+    // Đường đô thị và ĐT.601/602: KHÔNG có ô bật cả lớp; chỉ hiện đúng tuyến được chọn ở ô "Chọn tên đường"
+    const chosen = L.layerGroup().addTo(map);
 
     const DT_COLOR = { ok: '#00a000', dai: '#ff8c00', ngan: '#e53935' };
     function lineStyle(p) {
@@ -121,12 +122,16 @@
     }
     map.on('zoomend overlayadd overlayremove', updateCoc);
 
+    function clearChosen() {
+        if (kchtHighlighted) kchtHighlighted.setStyle(lineStyle(kchtHighlighted._kchtProps));
+        kchtHighlighted = null;
+        chosen.clearLayers();
+    }
     function focusRoad(name) {
         const layer = roadIndex[name];
         if (!layer) return false;
-        if (kchtHighlighted) kchtHighlighted.setStyle(lineStyle(kchtHighlighted._kchtProps));
-        const grp = groups[layer._kchtProps.lop];
-        if (!map.hasLayer(grp)) map.addLayer(grp);
+        clearChosen();
+        chosen.addLayer(layer);
         kchtHighlighted = layer;
         layer.setStyle({ color: '#FFD800', weight: 8, opacity: 1 });
         layer.bringToFront();
@@ -139,7 +144,7 @@
     const originalZoomToRoad = window.zoomToRoad;
     window.zoomToRoad = function (roadName) {
         if (roadName && roadIndex[roadName]) { focusRoad(roadName); return; }
-        if (kchtHighlighted) { kchtHighlighted.setStyle(lineStyle(kchtHighlighted._kchtProps)); kchtHighlighted = null; }
+        clearChosen();
         if (typeof originalZoomToRoad === 'function') originalZoomToRoad(roadName);
     };
 
@@ -151,6 +156,7 @@
                 if (!layer) return;
                 if (f.properties.lop === 'coc_km') cocAll.addLayer(layer);
                 else if (groups[f.properties.lop]) groups[f.properties.lop].addLayer(layer);
+                // do_thi, tuyen_moi: chỉ lưu vào roadIndex, hiện khi được chọn
             });
             GROUPS.forEach(g => {
                 if (g[2]) groups[g[0]].addTo(map);
