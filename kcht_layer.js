@@ -177,6 +177,16 @@
         })
         .catch(err => console.error('Không tải được KCHT_TTQLHT.geojson', err));
 
+    // Tự nạp chức năng "📤 Gửi qua Zalo" (zalo_share.js) sau khi trang tải xong,
+    // nên không cần sửa index.html. Nếu index.html đã có dòng nạp zalo_share.js thì bỏ qua.
+    window.addEventListener('load', function () {
+        if (window.__zaloShareLoaded || document.querySelector('script[src*="zalo_share.js"]')) return;
+        window.__zaloShareLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'zalo_share.js?v=20261112';
+        document.body.appendChild(s);
+    });
+
     // CSS riêng cho lớp KCHT
     const css = document.createElement('style');
     css.textContent = `
