@@ -1,4 +1,5 @@
-// PHIÊN BẢN 17/11/2026 (3) – bảng thông tin gọn; chọn tuyến thì phóng tới và tự mở bảng thông tin
+// PHIÊN BẢN 17/11/2026 (4) – tuyến được chọn nằm trên ranh giới phường, bấm lại vẫn hiện thông tin
+// (17/11/2026 (3)) – bảng thông tin gọn; chọn tuyến thì phóng tới và tự mở bảng thông tin
 // (17/11/2026 (2): bấm đường QL/ĐT màu đen hiện bảng thông tin đoạn theo danh mục)
 // (17/11/2026: dữ liệu theo Danh mục chuẩn hóa v11; thêm lớp phao báo hiệu ĐTNĐ)
 // (12/11/2026: ẩn QL/ĐT màu đen (DT.geojson), chỉ hiện tuyến được chọn)
@@ -211,18 +212,25 @@
         if (roadName && roadIndex[roadName]) { dtChosen.clearLayers(); focusRoad(roadName); return; }
         clearChosen();
         // Tuyến QL/ĐT gốc (DT.geojson, màu đen): chỉ hiện đúng tuyến được chọn, tô vàng, mở bảng tóm tắt
-        dtChosen.eachLayer(l => { try { dtLayer.resetStyle(l); } catch (e) { } });
+        // (17/11/2026) Vẽ BẢN SAO tuyến được chọn ở lớp kchtLines (nằm trên ranh giới phường/xã),
+        // để rê chuột qua phường không che mất tuyến; bấm vào tuyến luôn hiện thông tin đoạn.
         dtChosen.clearLayers(); segHighlight.clearLayers();
         const picked = [];
         if (roadName && typeof dtLayer !== 'undefined' && dtLayer) {
-            dtLayer.eachLayer(l => { if (l.feature && l.feature.properties.name === roadName) { dtChosen.addLayer(l); picked.push(l); } });
+            dtLayer.eachLayer(l => {
+                if (!(l.feature && l.feature.properties.name === roadName)) return;
+                const copy = L.geoJSON(l.feature, { pane: 'kchtLines', style: () => ({ color: '#FFD800', weight: 8, opacity: 1 }) });
+                copy.on('click', e => dtClick(e, roadName));
+                copy.bindTooltip(roadName, { sticky: true });
+                dtChosen.addLayer(copy); picked.push(copy);
+            });
         }
         if (!picked.length) { if (typeof originalZoomToRoad === 'function') originalZoomToRoad(roadName); return; }
         let bounds = null;
-        picked.forEach(l => { l.setStyle({ color: '#FFD800', weight: 8, opacity: 1 }); l.bringToFront(); bounds = bounds ? bounds.extend(l.getBounds()) : L.latLngBounds(l.getBounds().getSouthWest(), l.getBounds().getNorthEast()); });
+        picked.forEach(l => { bounds = bounds ? bounds.extend(l.getBounds()) : L.latLngBounds(l.getBounds().getSouthWest(), l.getBounds().getNorthEast()); });
         map.fitBounds(bounds, { padding: [50, 50] });
         // điểm trên tuyến gần tâm khung nhìn để đặt bảng thông tin
-        let lls = picked[0].getLatLngs(); while (lls.length && Array.isArray(lls[0])) lls = [].concat(...lls);
+        let lls = []; picked[0].eachLayer(pl => { let x = pl.getLatLngs(); while (x.length && Array.isArray(x[0])) x = [].concat(...x); lls.push(...x); });
         const c = bounds.getCenter(); let at = lls[0];
         lls.forEach(q => { if (q.distanceTo(c) < at.distanceTo(c)) at = q; });
         setTimeout(() => L.popup({ maxWidth: 380 }).setLatLng(at).setContent(routeSummary(roadName)).openOn(map), 350);
