@@ -1,4 +1,6 @@
-// PHIÊN BẢN 17/11/2026 – dữ liệu theo Danh mục chuẩn hóa v11; thêm lớp phao báo hiệu ĐTNĐ
+// PHIÊN BẢN 17/11/2026 (3) – bảng thông tin gọn; chọn tuyến thì phóng tới và tự mở bảng thông tin
+// (17/11/2026 (2): bấm đường QL/ĐT màu đen hiện bảng thông tin đoạn theo danh mục)
+// (17/11/2026: dữ liệu theo Danh mục chuẩn hóa v11; thêm lớp phao báo hiệu ĐTNĐ)
 // (12/11/2026: ẩn QL/ĐT màu đen (DT.geojson), chỉ hiện tuyến được chọn)
 // =====================================================================
 // LỚP KCHT TTQLHT (bổ sung 11/2026)
@@ -70,13 +72,46 @@
         return { color: '#333', weight: 3 };
     }
 
-    function popupHtml(p, latlng) {
-        const rows = (p.tt || []).map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join('');
+    // (17/11/2026) Bảng thông tin gọn: khung rộng cố định, cuộn khi dài; trường chính ở trên, còn lại thu vào "Thông tin khác"
+    (function addCss() {
+        const st = document.createElement('style');
+        st.textContent = `
+        .leaflet-popup-content .kcht-popup { display:block; width:340px; max-width:78vw; }
+        .kcht-popup h4 { white-space:normal !important; font-size:14px; line-height:1.3; margin:0 0 6px !important; padding-right:14px; }
+        .kcht-popup .kcht-sub { margin:0 0 6px; color:#555; font-size:11px; }
+        .kcht-popup .kcht-body { max-height:52vh; overflow-y:auto; }
+        .kcht-popup table { width:100%; table-layout:fixed; border-collapse:collapse; }
+        .kcht-popup td { font-size:12px !important; padding:4px 4px !important; vertical-align:top; border-bottom:1px solid #eee; word-wrap:break-word; }
+        .kcht-popup td:first-child { width:42%; color:#555; font-weight:600; }
+        .kcht-popup details { margin-top:6px; }
+        .kcht-popup summary { cursor:pointer; color:#0b57d0; font-size:12px; padding:3px 0; }
+        .kcht-popup .kcht-note { font-size:11px; color:#666; margin-top:6px; }`;
+        document.head.appendChild(st);
+    })();
+    const MAIN_KEYS = ['Tuyến', 'Tên tuyến', 'Tên tuyến (danh mục)', 'Tên đường', 'Tên cầu', 'Tên hầm', 'Tên', 'Loại', 'Nhóm',
+        'Lý trình đầu', 'Lý trình cuối', 'Lý trình/điểm đầu', 'Lý trình/điểm cuối', 'Từ Km', 'Đến Km', 'Từ Km / Điểm đầu', 'Đến Km / Điểm cuối',
+        'Điểm đầu', 'Điểm cuối', 'Lý trình tim cầu',
+        'Chiều dài quản lý (km)', 'Chiều dài đang quản lý, bảo trì (km)', 'Chiều dài (km)', 'Chiều dài DM (km)', 'Tổng chiều dài danh mục (km)', 'Số đoạn trong danh mục',
+        'Chiều dài toàn cầu (m)', 'Chiều dài cầu (m)', 'Chiều dài (m)', 'Quy mô', 'Diện tích',
+        'Bề rộng mặt (m)', 'Bề rộng mặt đường (m)', 'Số làn', 'Số làn xe', 'Kết cấu mặt', 'Kết cấu mặt đường', 'Cấp đường', 'Cấp', 'Tải trọng TK', 'Tải trọng thiết kế',
+        'Năm đưa vào SD', 'Nhóm đường (DT 2027-2029)', 'Trạng thái', 'Đơn vị bảo trì', 'Phường', 'Phường (danh mục)', 'Phường/xã (theo ranh giới)', 'Phường/xã đi qua (theo ranh giới)', 'Phường/xã',
+        'Tình trạng', 'Tình trạng định vị', 'Vị trí'];
+    const HIDE_KEYS = /^(Cập nhật danh mục v11|— Thông tin danh mục v11|Cơ quan chủ quản|Mã đối tượng|Nguồn danh mục|Nguồn dữ liệu|Nguồn)/;
+    function popupHtml(p, latlng, sub, keepOrder) {
+        const tt = (p.tt || []).filter(r => r[1] !== '' && r[1] != null && !HIDE_KEYS.test(r[0]));
+        const seen = new Set(), main = [], other = [];
+        MAIN_KEYS.forEach(k => { const r = tt.find(x => x[0] === k); if (r && !seen.has(k)) { seen.add(k); main.push(r); } });
+        tt.forEach(r => { if (!seen.has(r[0])) { seen.add(r[0]); other.push(r); } });
+        if (keepOrder) { main.length = 0; other.length = 0; main.push(...tt); }
+        else if (main.length < 4) { main.push(...other.splice(0, 8 - main.length)); }
+        const tr = r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`;
         const gmap = latlng ? `<tr><td>Bản đồ</td><td><a href="https://www.google.com/maps?q=${latlng.lat},${latlng.lng}" target="_blank" rel="noopener">Mở Google Maps</a></td></tr>` : '';
-        return `<div class="info-popup kcht-popup"><h4>${esc(p.ten)}</h4><table>${rows}${gmap}</table></div>`;
+        const more = other.length ? `<details><summary>Thông tin khác (${other.length})</summary><table>${other.map(tr).join('')}</table></details>` : '';
+        return `<div class="info-popup kcht-popup"><h4>${esc(p.ten)}</h4>${sub ? `<p class="kcht-sub">${esc(sub)}</p>` : ''}<div class="kcht-body"><table>${main.map(tr).join('')}${gmap}</table>${more}</div></div>`;
     }
 
     const roadIndex = {};      // tên đường -> layer (để chọn từ danh sách)
+    const segByRoute = {};     // tên tuyến QL/ĐT -> các đoạn theo danh mục (có bảng thông tin)
     let kchtHighlighted = null;
 
     function buildLayer(f) {
@@ -110,12 +145,12 @@
             } else {
                 layer = L.circleMarker(ll, { pane: 'kchtPoints', radius: 6, fillColor: '#795548', fillOpacity: 0.9, color: '#fff', weight: 2 });
             }
-            layer.bindPopup(() => popupHtml(p, ll), { maxWidth: 360 });
+            layer.bindPopup(() => popupHtml(p, ll), { maxWidth: 380 });
             layer.bindTooltip(p.ten, { direction: 'top' });
             return layer;
         }
         layer = L.geoJSON(f, { pane: 'kchtLines', style: () => lineStyle(p) });
-        layer.bindPopup(() => popupHtml(p, null), { maxWidth: 360 });
+        layer.bindPopup(() => popupHtml(p, null), { maxWidth: 380 });
         layer.bindTooltip(p.ten, { sticky: true });
         layer.on({
             mouseover: e => { if (layer !== kchtHighlighted) layer.setStyle({ weight: 7, color: '#FF0000' }); },
@@ -123,6 +158,7 @@
         });
         layer._kchtProps = p;
         if (p.lop === 'do_thi' || p.lop === 'tuyen_moi') roadIndex[p.ten] = layer;
+        if (p.lop === 'ql_doan' || p.lop === 'dt_doan') (segByRoute[p.tuyen] = segByRoute[p.tuyen] || []).push(layer);
         return layer;
     }
 
@@ -149,7 +185,10 @@
         layer.setStyle({ color: '#FFD800', weight: 8, opacity: 1 });
         layer.bringToFront();
         map.fitBounds(layer.getBounds(), { padding: [50, 50] });
-        layer.openPopup(layer.getBounds().getCenter());
+        let lls = []; layer.eachLayer(pl => { let x = pl.getLatLngs(); while (x.length && Array.isArray(x[0])) x = [].concat(...x); lls.push(...x); });
+        const c = layer.getBounds().getCenter(); let at = lls[0] || c;
+        lls.forEach(q => { if (q.distanceTo(c) < at.distanceTo(c)) at = q; });
+        setTimeout(() => layer.openPopup(at), 350);
         return true;
     }
 
@@ -171,13 +210,102 @@
     window.zoomToRoad = function (roadName) {
         if (roadName && roadIndex[roadName]) { dtChosen.clearLayers(); focusRoad(roadName); return; }
         clearChosen();
-        // Tuyến QL/ĐT gốc (DT.geojson, màu đen): chỉ hiện đúng tuyến được chọn
-        dtChosen.clearLayers();
+        // Tuyến QL/ĐT gốc (DT.geojson, màu đen): chỉ hiện đúng tuyến được chọn, tô vàng, mở bảng tóm tắt
+        dtChosen.eachLayer(l => { try { dtLayer.resetStyle(l); } catch (e) { } });
+        dtChosen.clearLayers(); segHighlight.clearLayers();
+        const picked = [];
         if (roadName && typeof dtLayer !== 'undefined' && dtLayer) {
-            dtLayer.eachLayer(l => { if (l.feature && l.feature.properties.name === roadName) dtChosen.addLayer(l); });
+            dtLayer.eachLayer(l => { if (l.feature && l.feature.properties.name === roadName) { dtChosen.addLayer(l); picked.push(l); } });
         }
-        if (typeof originalZoomToRoad === 'function') originalZoomToRoad(roadName);
+        if (!picked.length) { if (typeof originalZoomToRoad === 'function') originalZoomToRoad(roadName); return; }
+        let bounds = null;
+        picked.forEach(l => { l.setStyle({ color: '#FFD800', weight: 8, opacity: 1 }); l.bringToFront(); bounds = bounds ? bounds.extend(l.getBounds()) : L.latLngBounds(l.getBounds().getSouthWest(), l.getBounds().getNorthEast()); });
+        map.fitBounds(bounds, { padding: [50, 50] });
+        // điểm trên tuyến gần tâm khung nhìn để đặt bảng thông tin
+        let lls = picked[0].getLatLngs(); while (lls.length && Array.isArray(lls[0])) lls = [].concat(...lls);
+        const c = bounds.getCenter(); let at = lls[0];
+        lls.forEach(q => { if (q.distanceTo(c) < at.distanceTo(c)) at = q; });
+        setTimeout(() => L.popup({ maxWidth: 380 }).setLatLng(at).setContent(routeSummary(roadName)).openOn(map), 350);
     };
+    function routeSummary(name) {
+        const route = dtRouteName(name), segs = (route && segByRoute[route]) || [];
+        if (!segs.length) return `<div class="info-popup kcht-popup"><h4>${esc(name)}</h4><p class="kcht-note">Tuyến này chưa có đoạn nào trong danh mục TTQLHT quản lý.</p></div>`;
+        const get = (p, ks) => { for (const k of ks) { const r = (p.tt || []).find(x => x[0] === k); if (r && r[1] !== '' && r[1] != null) return r[1]; } return ''; };
+        const km = t => { const m = String(t).replace(/\s/g, '').match(/Km(\d+)(?:\+(\d+(?:[.,]\d+)?))?/i); return m ? (+m[1]) * 1000 + (m[2] ? parseFloat(m[2].replace(',', '.')) : 0) : null; };
+        let tot = 0, lo = null, hi = null; const cap = new Set(), kc = new Set(), dv = new Set(), px = new Set();
+        segs.forEach(g => {
+            const p = g._kchtProps;
+            const L1 = parseFloat(get(p, ['Chiều dài đang quản lý, bảo trì (km)', 'Chiều dài quản lý (km)', 'Chiều dài (km)'])); if (!isNaN(L1)) tot += L1;
+            const a = km(get(p, ['Từ Km', 'Lý trình đầu', 'Từ Km / Điểm đầu', 'Lý trình/điểm đầu'])), b = km(get(p, ['Đến Km', 'Lý trình cuối', 'Đến Km / Điểm cuối', 'Lý trình/điểm cuối']));
+            [a, b].forEach(v => { if (v != null) { lo = lo == null ? v : Math.min(lo, v); hi = hi == null ? v : Math.max(hi, v); } });
+            const c1 = get(p, ['Cấp đường']); if (c1) cap.add(c1);
+            const k1 = get(p, ['Kết cấu mặt đường', 'Kết cấu mặt']); if (k1) kc.add(k1);
+            const d1 = get(p, ['Đơn vị bảo trì']); if (d1) dv.add(d1);
+            String(get(p, ['Phường/xã (theo ranh giới)'])).split(',').forEach(w => { w = w.trim(); if (w) px.add(w); });
+        });
+        const f = v => 'Km' + Math.floor(v / 1000) + '+' + String(Math.round(v % 1000)).padStart(3, '0');
+        const rows = [['Số đoạn TTQLHT quản lý', segs.length], ['Tổng chiều dài theo danh mục (km)', tot.toFixed(3)],
+            ['Phạm vi lý trình', lo != null ? f(lo) + ' → ' + f(hi) : ''], ['Cấp đường', [...cap].join(', ')], ['Kết cấu mặt', [...kc].join(', ')],
+            ['Đơn vị bảo trì', [...dv].join('; ')], ['Phường/xã đi qua', [...px].join(', ')]].filter(r => r[1] !== '');
+        return popupHtml({ ten: route + ' – toàn tuyến', tt: rows }, null, 'Bấm vào vị trí bất kỳ trên đường vàng để xem thông tin đoạn tại đó', true);
+    }
+
+    // (17/11/2026) Bấm vào đường QL/ĐT màu đen (DT.geojson) trước đây chỉ hiện tên tuyến.
+    // Nay: tìm đoạn theo danh mục TTQLHT tại vị trí bấm và hiện đủ bảng thông tin của đoạn đó.
+    function dtRouteName(n) {
+        n = String(n || '').trim();
+        let m = n.match(/thành\s*[DĐ]T\.?\s*(\d+[A-Z]?)/i);
+        if (m) return 'ĐT.' + m[1].toUpperCase();
+        m = n.match(/^Qu[ốo]c L[ộo]\s*(\d+[A-Z]?)/i) || n.match(/QL\.?\s*(\d+[A-Z]?)/i);
+        if (m) return 'Quốc lộ ' + m[1].toUpperCase();
+        m = n.match(/^[DĐ]T\.?\s*(\d+[A-Z]?)/i);
+        if (m) return 'ĐT.' + m[1].toUpperCase();
+        if (/tiên kỳ/i.test(n)) return 'Tuyến tránh TT Tiên Kỳ';
+        return null;
+    }
+    const segHighlight = L.layerGroup().addTo(map);
+    map.on('popupclose', () => segHighlight.clearLayers());
+    function nearestSeg(latlng, route) {
+        const pools = route && segByRoute[route] ? [segByRoute[route]] : Object.values(segByRoute);
+        const P = map.latLngToLayerPoint(latlng);
+        let best = null;
+        pools.forEach(list => list.forEach(g => g.eachLayer(pl => {
+            let lls = pl.getLatLngs(); if (lls.length && Array.isArray(lls[0])) lls = [].concat(...lls);
+            for (let i = 0; i < lls.length - 1; i++) {
+                const d = L.LineUtil.pointToSegmentDistance(P, map.latLngToLayerPoint(lls[i]), map.latLngToLayerPoint(lls[i + 1]));
+                if (!best || d < best.d) best = { d, g, pl };
+            }
+        })));
+        return best;
+    }
+    function dtClick(e, name) {
+        L.DomEvent.stopPropagation(e);
+        const route = dtRouteName(name);
+        let b = nearestSeg(e.latlng, route);
+        if (route && (!b || b.d > 40)) b = nearestSeg(e.latlng, null);
+        let html;
+        if (b && b.d <= 40) {
+            const p = b.g._kchtProps;
+            html = popupHtml(p, e.latlng, 'Đoạn theo danh mục TTQLHT tại vị trí bấm');
+            segHighlight.clearLayers();
+            L.polyline(b.pl.getLatLngs(), { pane: 'kchtLines', color: '#FFD800', weight: 9, opacity: 0.9, interactive: false }).addTo(segHighlight);
+        } else {
+            html = `<div class="info-popup kcht-popup"><h4>${esc(name)}</h4><p>Vị trí này chưa có đoạn nào trong danh mục TTQLHT quản lý.</p></div>`;
+        }
+        L.popup({ maxWidth: 380 }).setLatLng(e.latlng).setContent(html).openOn(map);
+    }
+    function attachDtPopups(n) {
+        if (typeof dtLayer === 'undefined' || !dtLayer || !dtLayer.getLayers().length) {
+            if (n < 240) setTimeout(() => attachDtPopups(n + 1), 250);
+            return;
+        }
+        dtLayer.eachLayer(l => {
+            const nm = l.feature && l.feature.properties && l.feature.properties.name;
+            l.unbindPopup();
+            l.off('click');
+            l.on('click', e => dtClick(e, nm));
+        });
+    }
 
     fetch('KCHT_TTQLHT.geojson?v=20261117')
         .then(res => res.json())
@@ -194,6 +322,7 @@
                 layerControl.addOverlay(groups[g[0]], g[1]);
             });
             updateCoc();
+            attachDtPopups(0);
 
             // Bổ sung tên đường vào danh sách chọn
             const sel = document.getElementById('road-select');
