@@ -1,8 +1,9 @@
-// PHIÊN BẢN 12/11/2026 17:50 – ẩn QL/ĐT màu đen (DT.geojson), chỉ hiện tuyến được chọn
+// PHIÊN BẢN 17/11/2026 – dữ liệu theo Danh mục chuẩn hóa v11; thêm lớp phao báo hiệu ĐTNĐ
+// (12/11/2026: ẩn QL/ĐT màu đen (DT.geojson), chỉ hiện tuyến được chọn)
 // =====================================================================
 // LỚP KCHT TTQLHT (bổ sung 11/2026)
 // Dữ liệu: KCHT_TTQLHT.geojson – chuyển từ KMZ "KCHT_GT_TTQLHT_tong_hop_ra_soat_ban_do"
-// (Danh mục chuẩn hóa KCHTGT TTQLHT v5; KMZ Bão Lũ 03.09; OpenStreetMap 10/11/2026)
+// (Danh mục chuẩn hóa KCHTGT TTQLHT v11 – 17/11/2026; KMZ Bão Lũ 03.09; OpenStreetMap 10/11/2026)
 // Gồm: đường đô thị theo tên, đoạn QL/ĐT theo danh mục, ĐT.601/ĐT.602, cọc Km,
 //      cầu, cầu trên OSM chưa có trong danh mục, hầm, kè/hào (vị trí tham chiếu).
 // Tham số URL: ?duong=Tên đường  (VD: ?duong=Lê Thanh Nghị)
@@ -49,7 +50,8 @@
         ['cau', '<span style="color:#6a1b9a">▲</span> Cầu (QL, ĐT, nội thị)', false],
         ['cau_osm', '<span style="color:#9e9e9e">■</span> Cầu trên QL/ĐT chưa có trong danh mục (OSM)', false],
         ['ham', '<span style="color:#0d47a1">▼</span> Hầm đường bộ', false],
-        ['ke_hao', '<span style="color:#795548">ⓘ</span> Kè, hào kỹ thuật, sàn (vị trí tham chiếu)', false]
+        ['ke_hao', '<span style="color:#795548">ⓘ</span> Kè, hào kỹ thuật, sàn (vị trí tham chiếu)', false],
+        ['bao_hieu', '<span style="color:#00838f">●</span> Phao báo hiệu đường thủy nội địa', false]
     ];
     const groups = {};
     GROUPS.forEach(g => { groups[g[0]] = L.layerGroup(); });
@@ -103,6 +105,8 @@
                     pane: 'kchtPoints',
                     icon: L.divIcon({ className: 'kcht-cau', html: '<span style="color:#0d47a1">▼</span>', iconSize: [16, 16], iconAnchor: [8, 8] })
                 });
+            } else if (p.lop === 'bao_hieu') {
+                layer = L.circleMarker(ll, { pane: 'kchtPoints', radius: 6, fillColor: '#00838f', fillOpacity: 1, color: '#fff', weight: 2 });
             } else {
                 layer = L.circleMarker(ll, { pane: 'kchtPoints', radius: 6, fillColor: '#795548', fillOpacity: 0.9, color: '#fff', weight: 2 });
             }
@@ -175,7 +179,7 @@
         if (typeof originalZoomToRoad === 'function') originalZoomToRoad(roadName);
     };
 
-    fetch('KCHT_TTQLHT.geojson')
+    fetch('KCHT_TTQLHT.geojson?v=20261117')
         .then(res => res.json())
         .then(data => {
             data.features.forEach(f => {
