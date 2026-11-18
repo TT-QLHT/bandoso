@@ -102,7 +102,25 @@
         }
     }
     map.on('zoomend', updateLabels);
-    labels.on('add', () => setTimeout(updateLabels, 0));
+
+    // Tắt tên xã/phường/huyện CŨ in sẵn trên nền Google (Vệ tinh, Giao thông, Địa hình) để không trùng tên,
+    // vẫn giữ tên chợ, trường, số hiệu đường. Tắt lớp "Tên phường, xã" thì tên của Google hiện lại.
+    const NO_ADMIN = '&apistyle=' + encodeURIComponent('s.t:1|s.e:l|p.v:off');
+    function googleBases() {
+        const out = new Set();
+        ['googleHybrid', 'googleRoadmap', 'googleTerrain'].forEach(n => { try { const l = eval(n); if (l && l.setUrl) out.add(l); } catch (e) { } });
+        if (typeof layerControl !== 'undefined' && layerControl._layers) layerControl._layers.forEach(o => { if (o.layer && o.layer._url && /google\.com\/vt/.test(o.layer._url)) out.add(o.layer); });
+        return [...out];
+    }
+    function googleAdminLabels(show) {
+        googleBases().forEach(l => {
+            const base = l._url.replace(NO_ADMIN, '');
+            const url = show ? base : base + NO_ADMIN;
+            if (url !== l._url) l.setUrl(url);
+        });
+    }
+    labels.on('add', () => { setTimeout(updateLabels, 0); googleAdminLabels(false); });
+    labels.on('remove', () => googleAdminLabels(true));
 
     // Chờ index.html tải xong map.geojson
     let tries = 0;
