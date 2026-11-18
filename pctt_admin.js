@@ -1,5 +1,7 @@
 // =====================================================================
 // CHỈNH SỬA ĐIỂM NGUY HIỂM MÙA MƯA BÃO (PCTT) NGAY TRÊN BẢN ĐỒ (bổ sung 11/2026)
+// (18/11/2026) Thêm điểm ngập nước / sạt lở mới (qua nút "🛠 Quản trị bản đồ" của ban_do_admin.js),
+//              sửa được tên tuyến của điểm.
 // - Cán bộ quản lý (quan_ly) và quản trị viên (admin) đã đăng nhập ở bảng "Sự cố hiện trường"
 //   sẽ thấy nút "✏️ Chỉnh sửa điểm này" trong popup của mỗi điểm nguy hiểm.
 // - Nội dung sửa được lưu vào Google Sheet (trang PCTT_ChinhSua, lịch sử ở PCTT_LichSu)
@@ -45,11 +47,20 @@
     function applyOne(r) {
         let its = itemsOf(r.ma);
         if (!its.length && hidden[r.ma]) its = [hidden[r.ma]];
+        // (18/11/2026) Điểm bổ sung mới (không có trong PCTT_BaoLu.geojson): tạo điểm trên bản đồ
+        if (!its.length && r.lat !== '' && r.lng !== '' && isFinite(+r.lat) && isFinite(+r.lng)) {
+            const f = { type: 'Feature', geometry: { type: 'Point', coordinates: [+r.lng, +r.lat] },
+                properties: { nhom: 'nguy_hiem', ma: r.ma, ten: r.ten, tuyen: (r.thong_tin || {})['Tuyến'] || '', phan_loai: r.phan_loai || 'Nguy cơ khác',
+                    danh_gia_nguy_co: r.danh_gia_nguy_co || '', dia_phuong: r.dia_phuong || '', thong_tin: {}, nguon: 'Bổ sung trên bản đồ' } };
+            const it = pcttBuildLayer(f);
+            if (it) { pcttItems.push(it); pcttHazardByMa[r.ma] = it; its = [it]; }
+        }
         its.forEach(it => {
             const p = it.feature.properties;
             ['ten', 'ly_trinh', 'phan_loai', 'danh_gia_nguy_co', 'dia_phuong', 'giai_phap_de_xuat', 'ket_qua_xac_nhan', 'ho_so_lien_quan']
                 .forEach(k => { if (r[k] !== undefined && r[k] !== '') p[k] = r[k]; else if (['giai_phap_de_xuat', 'ket_qua_xac_nhan', 'ho_so_lien_quan'].includes(k)) p[k] = r[k] || ''; });
             if (r.thong_tin && Object.keys(r.thong_tin).length) p.thong_tin = Object.assign({}, r.thong_tin);
+            if (r.thong_tin && r.thong_tin['Tuyến']) p.tuyen = r.thong_tin['Tuyến'];
             if (r.ngay_cap_nhat) p.ngay_cap_nhat = fmt(r.ngay_cap_nhat) + (r.ho_ten_nguoi_cap_nhat ? ' – ' + r.ho_ten_nguoi_cap_nhat : '');
             it.group = p.phan_loai === 'Ngập nước' ? 'ngap' : 'satlo';
             const lay = it.layer;
@@ -102,20 +113,45 @@
     function select(id, label, val, opts) {
         return `<label class="pa-f"><span>${esc(label)}</span><select id="${id}">${opts.map(o => `<option${o === val ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
     }
-    function closeForm() { const m = document.getElementById('pa-modal'); if (m) m.remove(); }
+    let pendingNew = null;     // mã điểm mới đang nhập (chưa lưu) – hủy thì bỏ khỏi bản đồ
+    function closeForm() {
+        const m = document.getElementById('pa-modal'); if (m) m.remove();
+        if (pendingNew) {
+            const it = pcttHazardByMa[pendingNew];
+            if (it) { const i = pcttItems.indexOf(it); if (i >= 0) pcttItems.splice(i, 1); Object.values(pcttGroups).forEach(g => g.removeLayer(it.layer)); }
+            delete pcttHazardByMa[pendingNew]; pendingNew = null; refresh();
+        }
+    }
+    // (18/11/2026) Thêm điểm nguy hiểm mới tại vị trí đã chọn
+    window.pcttAdminCreate = function (lat, lng, phanLoai) {
+        if (!canEdit()) { toast('Cần đăng nhập tài khoản quản lý hoặc quản trị', 'err'); return; }
+        if (serverOk === false) { toast('Máy chủ Apps Script chưa được cập nhật (Code.gs phiên bản 1.2 trở lên)', 'err'); return; }
+        const d = new Date(), z = n => String(n).padStart(2, '0');
+        const ma = `BS${String(d.getFullYear()).slice(2)}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
+        const f = { type: 'Feature', geometry: { type: 'Point', coordinates: [+lng, +lat] },
+            properties: { nhom: 'nguy_hiem', ma: ma, ten: '', tuyen: '', phan_loai: phanLoai || 'Ngập nước', danh_gia_nguy_co: '', dia_phuong: '', thong_tin: {}, nguon: 'Bổ sung trên bản đồ' } };
+        const it = pcttBuildLayer(f);
+        if (!it) return;
+        pcttItems.push(it); pcttHazardByMa[ma] = it;
+        map.addLayer(pcttGroups[it.group]); refresh();
+        pcttAdminEdit(ma, true);
+    };
 
-    window.pcttAdminEdit = function (ma) {
+    window.pcttAdminEdit = function (ma, isNew) {
         if (!canEdit()) { toast('Cần đăng nhập tài khoản quản lý hoặc quản trị để chỉnh sửa', 'err'); return; }
         if (serverOk === false) { toast('Máy chủ Apps Script chưa được cập nhật (Code.gs phiên bản 1.2) nên chưa lưu được chỉnh sửa', 'err'); return; }
         const it = pcttHazardByMa[ma] || hidden[ma];
         if (!it) return;
         map.closePopup();
+        if (pendingNew && pendingNew !== ma) closeForm();
+        if (isNew) pendingNew = ma;
         const p = it.feature.properties, tt = p.thong_tin || {};
         const ll = it.layer.getLatLng ? it.layer.getLatLng() : null;
         const ttKeys = TT_ORDER.concat(Object.keys(tt).filter(k => !TT_ORDER.includes(k) && !Object.values(SYNC).includes(k) && k !== 'Tuyến'));
         const body = `
-            <div class="pa-note">Mã điểm <b>${esc(ma)}</b> · Tuyến ${esc(p.tuyen)}. Ô để trống = không có dữ liệu.</div>
+            <div class="pa-note">Mã điểm <b>${esc(ma)}</b>${isNew ? ' (điểm mới)' : ''}. Ô để trống = không có dữ liệu.</div>
             ${field('pa-ten', 'Tên điểm', p.ten)}
+            ${field('pa-tuyen', 'Tuyến (VD: Quốc lộ 14B, ĐT.603, đường Nguyễn Tất Thành)', p.tuyen)}
             ${field('pa-ly_trinh', 'Lý trình', p.ly_trinh)}
             <div class="pa-row">${select('pa-phan_loai', 'Phân loại', p.phan_loai, ['Ngập nước', 'Sạt lở', 'Nguy cơ khác'])}
             ${select('pa-danh_gia_nguy_co', 'Đánh giá nguy cơ', p.danh_gia_nguy_co || '', ['Nguy cơ cao', 'Nguy cơ thấp', ''])}</div>
@@ -131,7 +167,7 @@
             <div class="pa-msg" id="pa-msg"></div>`;
         const bg = document.createElement('div');
         bg.className = 'sc-modal-bg'; bg.id = 'pa-modal';
-        bg.innerHTML = `<div class="sc-modal" role="dialog"><header><span>✏️ Chỉnh sửa điểm nguy hiểm</span><button id="pa-x" aria-label="Đóng">×</button></header>
+        bg.innerHTML = `<div class="sc-modal" role="dialog"><header><span>${isNew ? '＋ Thêm điểm nguy hiểm mới' : '✏️ Chỉnh sửa điểm nguy hiểm'}</span><button id="pa-x" aria-label="Đóng">×</button></header>
             <div class="content">${body}</div>
             <footer><button class="sc-btn" id="pa-cancel">Hủy</button><button class="sc-btn blue" id="pa-save">💾 Lưu chỉnh sửa</button></footer></div>`;
         document.body.appendChild(bg);
@@ -145,7 +181,8 @@
                 dia_phuong: v('pa-dia_phuong'), giai_phap_de_xuat: v('pa-giai_phap_de_xuat'), ket_qua_xac_nhan: v('pa-ket_qua_xac_nhan'),
                 ho_so_lien_quan: v('pa-ho_so_lien_quan'), lat: v('pa-lat'), lng: v('pa-lng'), thong_tin: {}
             };
-            if (tt['Tuyến']) data.thong_tin['Tuyến'] = tt['Tuyến'];
+            if (v('pa-tuyen')) data.thong_tin['Tuyến'] = v('pa-tuyen');
+            if (!data.ten) { msg('Hãy nhập tên điểm', 'err'); return; }
             ttKeys.forEach((k, i) => { const x = v('pa-tt-' + i); if (x) data.thong_tin[k] = x; });
             Object.keys(SYNC).forEach(k => { if (data[k]) data.thong_tin[SYNC[k]] = data[k]; });
             const an = document.getElementById('pa-an'); if (an) data.an = an.checked ? 'co' : '';
@@ -155,6 +192,7 @@
                 const r = await fetch(API, { method: 'POST', body: JSON.stringify({ action: 'pctt_save', token: session().token, ma: ma, data: data }) });
                 const d = await r.json();
                 if (!d.ok) throw new Error(d.code === 'UNKNOWN_ACTION' ? 'Máy chủ Apps Script chưa được cập nhật Code.gs phiên bản 1.2' : (d.message || d.code));
+                pendingNew = null;
                 applyOne(d.item); refresh(); closeForm();
                 toast(d.item.an === 'co' ? `Đã ẩn điểm ${ma}` : `Đã lưu chỉnh sửa ${ma}`);
                 const it2 = pcttHazardByMa[ma];

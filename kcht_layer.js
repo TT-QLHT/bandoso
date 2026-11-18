@@ -1,4 +1,5 @@
-// PHIÊN BẢN 17/11/2026 (4) – tuyến được chọn nằm trên ranh giới phường, bấm lại vẫn hiện thông tin
+// PHIÊN BẢN 18/11/2026 – mã định danh đối tượng + giao diện chỉnh sửa cho quản trị viên (ban_do_admin.js)
+// (17/11/2026 (4)) – tuyến được chọn nằm trên ranh giới phường, bấm lại vẫn hiện thông tin
 // (17/11/2026 (3)) – bảng thông tin gọn; chọn tuyến thì phóng tới và tự mở bảng thông tin
 // (17/11/2026 (2): bấm đường QL/ĐT màu đen hiện bảng thông tin đoạn theo danh mục)
 // (17/11/2026: dữ liệu theo Danh mục chuẩn hóa v11; thêm lớp phao báo hiệu ĐTNĐ)
@@ -54,7 +55,8 @@
         ['cau_osm', '<span style="color:#9e9e9e">■</span> Cầu trên QL/ĐT chưa có trong danh mục (OSM)', false],
         ['ham', '<span style="color:#0d47a1">▼</span> Hầm đường bộ', false],
         ['ke_hao', '<span style="color:#795548">ⓘ</span> Kè, hào kỹ thuật, sàn (vị trí tham chiếu)', false],
-        ['bao_hieu', '<span style="color:#00838f">●</span> Phao báo hiệu đường thủy nội địa', false]
+        ['bao_hieu', '<span style="color:#00838f">●</span> Phao báo hiệu đường thủy nội địa', false],
+        ['khac', '<span style="color:#455a64">◆</span> Đối tượng khác (quản trị viên bổ sung)', true]
     ];
     const groups = {};
     GROUPS.forEach(g => { groups[g[0]] = L.layerGroup(); });
@@ -69,6 +71,7 @@
             case 'ql_doan': return { color: p.hc ? '#e60000' : '#ff8c00', weight: 5, opacity: 0.85 };
             case 'dt_doan': return { color: p.hc ? '#0050e6' : '#b400b4', weight: 5, opacity: 0.85 };
             case 'do_thi_doan': return { color: '#00b8d4', weight: 3, opacity: 0.9, dashArray: '6 5' };
+            case 'khac_duong': return { color: '#455a64', weight: 4, opacity: 0.9 };
         }
         return { color: '#333', weight: 3 };
     }
@@ -111,6 +114,23 @@
         return `<div class="info-popup kcht-popup"><h4>${esc(p.ten)}</h4>${sub ? `<p class="kcht-sub">${esc(sub)}</p>` : ''}<div class="kcht-body"><table>${main.map(tr).join('')}${gmap}</table>${more}</div></div>`;
     }
 
+    const ITEMS = {};          // (18/11/2026) mã đối tượng -> { f, layer } (để quản trị viên sửa/xóa)
+    function fid(f) {
+        const p = f.properties;
+        if (p.id) return String(p.id);
+        let c = f.geometry.coordinates; while (Array.isArray(c[0])) c = c[0];
+        const s = p.lop + '|' + p.ten + '|' + (+c[0]).toFixed(5) + ',' + (+c[1]).toFixed(5);
+        let h = 0x811c9dc5;
+        for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+        let id = p.lop + '-' + (h >>> 0).toString(36), k = 2;
+        while (ITEMS[id]) id = p.lop + '-' + (h >>> 0).toString(36) + '-' + (k++);
+        return id;
+    }
+    // Nút quản trị (do ban_do_admin.js cung cấp) gắn vào cuối bảng thông tin
+    function withBtns(html, id) {
+        const b = (typeof window.KCHT_ADMIN_BTNS === 'function' && id) ? window.KCHT_ADMIN_BTNS(id) : '';
+        return b ? html.replace(/<\/div>\s*$/, b + '</div>') : html;
+    }
     const roadIndex = {};      // tên đường -> layer (để chọn từ danh sách)
     const segByRoute = {};     // tên tuyến QL/ĐT -> các đoạn theo danh mục (có bảng thông tin)
     let kchtHighlighted = null;
@@ -141,17 +161,23 @@
                     pane: 'kchtPoints',
                     icon: L.divIcon({ className: 'kcht-cau', html: '<span style="color:#0d47a1">▼</span>', iconSize: [16, 16], iconAnchor: [8, 8] })
                 });
+            } else if (p.lop === 'khac_diem') {
+                layer = L.marker(ll, {
+                    pane: 'kchtPoints',
+                    icon: L.divIcon({ className: 'kcht-cau', html: '<span style="color:#455a64">◆</span>', iconSize: [16, 16], iconAnchor: [8, 8] })
+                });
             } else if (p.lop === 'bao_hieu') {
                 layer = L.circleMarker(ll, { pane: 'kchtPoints', radius: 6, fillColor: '#00838f', fillOpacity: 1, color: '#fff', weight: 2 });
             } else {
                 layer = L.circleMarker(ll, { pane: 'kchtPoints', radius: 6, fillColor: '#795548', fillOpacity: 0.9, color: '#fff', weight: 2 });
             }
-            layer.bindPopup(() => popupHtml(p, ll), { maxWidth: 380 });
+            layer.bindPopup(() => withBtns(popupHtml(p, ll), layer._kchtId), { maxWidth: 380 });
             layer.bindTooltip(p.ten, { direction: 'top' });
+            layer._kchtProps = p;
             return layer;
         }
         layer = L.geoJSON(f, { pane: 'kchtLines', style: () => lineStyle(p) });
-        layer.bindPopup(() => popupHtml(p, null), { maxWidth: 380 });
+        layer.bindPopup(() => withBtns(popupHtml(p, null), layer._kchtId), { maxWidth: 380 });
         layer.bindTooltip(p.ten, { sticky: true });
         layer.on({
             mouseover: e => { if (layer !== kchtHighlighted) layer.setStyle({ weight: 7, color: '#FF0000' }); },
@@ -294,7 +320,7 @@
         let html;
         if (b && b.d <= 40) {
             const p = b.g._kchtProps;
-            html = popupHtml(p, e.latlng, 'Đoạn theo danh mục TTQLHT tại vị trí bấm');
+            html = withBtns(popupHtml(p, e.latlng, 'Đoạn theo danh mục TTQLHT tại vị trí bấm'), b.g._kchtId);
             segHighlight.clearLayers();
             L.polyline(b.pl.getLatLngs(), { pane: 'kchtLines', color: '#FFD800', weight: 9, opacity: 0.9, interactive: false }).addTo(segHighlight);
         } else {
@@ -315,16 +341,58 @@
         });
     }
 
+    // ---------- (18/11/2026) Thêm / sửa / xóa đối tượng (dùng cho ban_do_admin.js) ----------
+    let roadOptGroup = null;
+    function placeItem(f, id) {
+        const layer = buildLayer(f);
+        if (!layer) return null;
+        layer._kchtId = id;
+        const lop = f.properties.lop, gk = (lop === 'khac_diem' || lop === 'khac_duong') ? 'khac' : lop;
+        if (lop === 'coc_km') cocAll.addLayer(layer);
+        else if (groups[gk]) groups[gk].addLayer(layer);
+        // do_thi, tuyen_moi: chỉ lưu vào roadIndex, hiện khi được chọn
+        ITEMS[id] = { f: f, layer: layer };
+        return ITEMS[id];
+    }
+    function addRoadOption(name) {
+        const sel = document.getElementById('road-select');
+        if (!sel || !roadOptGroup || [...sel.options].some(o => o.value === name)) return;
+        const o = document.createElement('option'); o.value = name; o.textContent = name; roadOptGroup.appendChild(o);
+    }
+    function removeItem(id) {
+        const it = ITEMS[id]; if (!it) return null;
+        const layer = it.layer, p = it.f.properties;
+        [cocAll, chosen, dtChosen, segHighlight].concat(Object.values(groups)).forEach(g => { if (g.hasLayer(layer)) g.removeLayer(layer); });
+        if (map.hasLayer(layer)) map.removeLayer(layer);
+        if (roadIndex[p.ten] === layer) delete roadIndex[p.ten];
+        if (segByRoute[p.tuyen]) segByRoute[p.tuyen] = segByRoute[p.tuyen].filter(l => l !== layer);
+        if (kchtHighlighted === layer) kchtHighlighted = null;
+        delete ITEMS[id];
+        return it;
+    }
+    function addItem(f, id) {
+        id = id || fid(f);
+        if (ITEMS[id]) removeItem(id);
+        const it = placeItem(f, id);
+        if (it && (f.properties.lop === 'do_thi' || f.properties.lop === 'tuyen_moi')) addRoadOption(f.properties.ten);
+        return it;
+    }
+    function showItem(id, open) {
+        const it = ITEMS[id]; if (!it) return;
+        const p = it.f.properties, layer = it.layer;
+        if (p.lop === 'do_thi' || p.lop === 'tuyen_moi') { focusRoad(p.ten); return; }
+        const g = p.lop === 'coc_km' ? groups.coc_km : groups[(p.lop === 'khac_diem' || p.lop === 'khac_duong') ? 'khac' : p.lop];
+        if (g && !map.hasLayer(g)) map.addLayer(g);
+        if (layer.getLatLng) map.setView(layer.getLatLng(), Math.max(map.getZoom(), 16));
+        else map.fitBounds(layer.getBounds(), { padding: [50, 50] });
+        if (open !== false) setTimeout(() => layer.openPopup(), 350);
+    }
+    window.KCHT = { ITEMS, fid, add: addItem, remove: removeItem, show: showItem, popupHtml, lineStyle, groups, GROUPS, roadIndex, ready: false };
+
     fetch('KCHT_TTQLHT.geojson?v=20261117')
         .then(res => res.json())
         .then(data => {
-            data.features.forEach(f => {
-                const layer = buildLayer(f);
-                if (!layer) return;
-                if (f.properties.lop === 'coc_km') cocAll.addLayer(layer);
-                else if (groups[f.properties.lop]) groups[f.properties.lop].addLayer(layer);
-                // do_thi, tuyen_moi: chỉ lưu vào roadIndex, hiện khi được chọn
-            });
+            data.features.forEach(f => { if (f.geometry) placeItem(f, fid(f)); });
             GROUPS.forEach(g => {
                 if (g[2]) groups[g[0]].addTo(map);
                 layerControl.addOverlay(groups[g[0]], g[1]);
@@ -336,13 +404,15 @@
             const sel = document.getElementById('road-select');
             if (sel) {
                 const og = document.createElement('optgroup');
-                og.label = 'Đường đô thị & tuyến bổ sung (TTQLHT)';
+                og.label = 'Đường đô thị & tuyến bổ sung (TTQLHT)'; roadOptGroup = og;
                 Object.keys(roadIndex).sort((a, b) => a.localeCompare(b, 'vi')).forEach(n => {
                     const o = document.createElement('option'); o.value = n; o.textContent = n; og.appendChild(o);
                 });
                 sel.appendChild(og);
             }
 
+            window.KCHT.ready = true;
+            document.dispatchEvent(new Event('kcht-ready'));
             const q = new URLSearchParams(location.search);
             if (q.get('duong') && roadIndex[q.get('duong')]) {
                 if (sel) sel.value = q.get('duong');
@@ -365,7 +435,16 @@
         if (window.__pcttAdminLoaded || document.querySelector('script[src*="pctt_admin.js"]')) return;
         window.__pcttAdminLoaded = true;
         const s = document.createElement('script');
-        s.src = 'pctt_admin.js?v=20261112b';
+        s.src = 'pctt_admin.js?v=20261118';
+        document.body.appendChild(s);
+    });
+
+    // (18/11/2026) Tự nạp chức năng chỉnh sửa bản đồ cho quản trị viên (ban_do_admin.js)
+    window.addEventListener('load', function () {
+        if (window.__banDoAdminLoaded || document.querySelector('script[src*="ban_do_admin.js"]')) return;
+        window.__banDoAdminLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'ban_do_admin.js?v=20261118';
         document.body.appendChild(s);
     });
 
