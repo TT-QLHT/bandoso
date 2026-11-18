@@ -1,6 +1,7 @@
 // =====================================================================
 // CHỈNH SỬA ĐIỂM NGUY HIỂM MÙA MƯA BÃO (PCTT) NGAY TRÊN BẢN ĐỒ (bổ sung 11/2026)
-// (18/11/2026) Thêm điểm ngập nước / sạt lở mới (qua nút "🛠 Quản trị bản đồ" của ban_do_admin.js),
+// (18/11/2026) Thêm điểm ngập nước / sạt lở mới: nút trong bảng PCTT, chuột phải (nhấn giữ) lên bản đồ,
+//              hoặc nút "🛠 Quản trị bản đồ" (ban_do_admin.js);
 //              sửa được tên tuyến của điểm.
 // - Cán bộ quản lý (quan_ly) và quản trị viên (admin) đã đăng nhập ở bảng "Sự cố hiện trường"
 //   sẽ thấy nút "✏️ Chỉnh sửa điểm này" trong popup của mỗi điểm nguy hiểm.
@@ -214,6 +215,45 @@
         a.onclick = e => { const t = e.target.closest('a[data-ma]'); if (t) { e.preventDefault(); pcttAdminEdit(t.dataset.ma); } };
     }
 
+    // ---------- (18/11/2026) Lối tắt thêm điểm ngập / sạt lở ----------
+    // 1) Nút "＋ Thêm điểm ngập / sạt lở" trong bảng "Điểm nguy hiểm mùa mưa bão"
+    // 2) Bấm chuột phải (điện thoại: nhấn giữ) lên bản đồ → "Thêm điểm ngập nước / sạt lở tại đây"
+    let picking = false;
+    window.pcttPickAndCreate = function (phanLoai) {
+        if (!canEdit()) { toast('Cần đăng nhập tài khoản quản lý hoặc quản trị', 'err'); return; }
+        map.closePopup(); picking = true;
+        // tạm tắt bấm vào các lớp (ranh giới phường, đường…) để cú bấm rơi đúng xuống bản đồ
+        map.getContainer().classList.add('pa-picking');
+        toast('Bấm lên bản đồ tại vị trí cần thêm điểm ' + (phanLoai === 'Sạt lở' ? 'sạt lở' : 'ngập nước') + ' (phím Esc để hủy)', 'ok');
+        const stop = () => { picking = false; map.getContainer().classList.remove('pa-picking'); map.off('click', onPick); document.removeEventListener('keydown', onKey); };
+        const onPick = e => { stop(); pcttAdminCreate(e.latlng.lat, e.latlng.lng, phanLoai); };
+        const onKey = e => { if (e.key === 'Escape') stop(); };
+        map.on('click', onPick); document.addEventListener('keydown', onKey);
+    };
+    function renderAddBtn() {
+        const body = document.querySelector('#pctt-panel .pctt-body');
+        if (!body) return;
+        let b = document.getElementById('pa-add');
+        if (!canEdit()) { if (b) b.remove(); return; }
+        if (b) return;
+        b = document.createElement('div'); b.id = 'pa-add'; b.className = 'pa-add';
+        b.innerHTML = '<button type="button" data-pl="Ngập nước">💧 Thêm điểm ngập</button><button type="button" data-pl="Sạt lở">⛰️ Thêm điểm sạt lở</button>';
+        b.onclick = e => { const t = e.target.closest('button[data-pl]'); if (t) pcttPickAndCreate(t.dataset.pl); };
+        body.insertBefore(b, body.firstChild);
+    }
+    // Bắt sự kiện trên khung bản đồ (kể cả khi bấm trúng ranh giới phường hay đường)
+    map.getContainer().addEventListener('contextmenu', ev => {
+        if (!canEdit() || picking) return;
+        if (ev.target.closest('.leaflet-control, .leaflet-popup')) return;
+        ev.preventDefault();
+        const ll = map.mouseEventToLatLng(ev);
+        L.popup({ maxWidth: 260 }).setLatLng(ll).setContent(
+            `<div class="pa-ctx"><b>Thêm tại vị trí này</b>
+             <button type="button" onclick="map.closePopup();pcttAdminCreate(${ll.lat},${ll.lng},'Ngập nước')">💧 Điểm ngập nước</button>
+             <button type="button" onclick="map.closePopup();pcttAdminCreate(${ll.lat},${ll.lng},'Sạt lở')">⛰️ Điểm sạt lở / nguy cơ khác</button></div>`).openOn(map);
+    });
+    renderAddBtn(); setInterval(renderAddBtn, 2000);
+
     // ---------- Khởi động: chờ dữ liệu PCTT tải xong ----------
     let tries = 0;
     (function wait() {
@@ -234,6 +274,13 @@
         .pa-note { font-size: 12px; color: #555; margin-bottom: 4px; }
         .pa-chk { display: block; margin: 10px 0; font-size: 13px; color: #b71c1c; font-weight: bold; }
         .pa-msg { font-size: 13px; margin-top: 6px; } .pa-msg.err { color: #c62828; } .pa-msg.info { color: #1565c0; }
-        .pa-hidden-link { font-size: 12px; margin-top: 6px; color: #555; }`;
+        .pa-hidden-link { font-size: 12px; margin-top: 6px; color: #555; }
+        .pa-picking { cursor: crosshair !important; }
+        .pa-picking .leaflet-map-pane > .leaflet-pane, .pa-picking .leaflet-map-pane > .leaflet-pane * { pointer-events: none !important; }
+        .pa-add { display: flex; gap: 6px; margin: 4px 0 8px; }
+        .pa-add button { flex: 1; border: none; border-radius: 5px; padding: 7px 4px; font-weight: bold; font-size: 12px; cursor: pointer; color: #fff; background: #1e88e5; }
+        .pa-add button[data-pl="Sạt lở"] { background: #8d5524; }
+        .pa-ctx { display: block; width: 220px; } .pa-ctx b { display: block; margin-bottom: 6px; }
+        .pa-ctx button { display: block; width: 100%; margin: 4px 0; padding: 7px; border: none; border-radius: 5px; background: #1565c0; color: #fff; font-weight: bold; cursor: pointer; }`;
     document.head.appendChild(css);
 })();
