@@ -1,4 +1,5 @@
-// PHIÊN BẢN 18/11/2026 – mã định danh đối tượng + giao diện chỉnh sửa cho quản trị viên (ban_do_admin.js)
+// PHIÊN BẢN 18/11/2026 (2) – chọn nhiều tuyến cùng lúc (nút "☑ Chọn nhiều tuyến", link ?nhieu=A|B)
+// (18/11/2026) – mã định danh đối tượng + giao diện chỉnh sửa cho quản trị viên (ban_do_admin.js)
 // (17/11/2026 (4)) – tuyến được chọn nằm trên ranh giới phường, bấm lại vẫn hiện thông tin
 // (17/11/2026 (3)) – bảng thông tin gọn; chọn tuyến thì phóng tới và tự mở bảng thông tin
 // (17/11/2026 (2): bấm đường QL/ĐT màu đen hiện bảng thông tin đoạn theo danh mục)
@@ -181,7 +182,7 @@
         layer.bindTooltip(p.ten, { sticky: true });
         layer.on({
             mouseover: e => { if (layer !== kchtHighlighted) layer.setStyle({ weight: 7, color: '#FF0000' }); },
-            mouseout: e => { if (layer !== kchtHighlighted) layer.setStyle(lineStyle(p)); }
+            mouseout: e => { if (layer !== kchtHighlighted) layer.setStyle(layer._multiStyle || lineStyle(p)); }
         });
         layer._kchtProps = p;
         if (p.lop === 'do_thi' || p.lop === 'tuyen_moi') roadIndex[p.ten] = layer;
@@ -199,7 +200,7 @@
     map.on('zoomend overlayadd overlayremove', updateCoc);
 
     function clearChosen() {
-        if (kchtHighlighted) kchtHighlighted.setStyle(lineStyle(kchtHighlighted._kchtProps));
+        if (kchtHighlighted) kchtHighlighted.setStyle(kchtHighlighted._multiStyle || lineStyle(kchtHighlighted._kchtProps));
         kchtHighlighted = null;
         chosen.clearLayers();
     }
@@ -387,6 +388,117 @@
         else map.fitBounds(layer.getBounds(), { padding: [50, 50] });
         if (open !== false) setTimeout(() => layer.openPopup(), 350);
     }
+    // ---------- (18/11/2026) Chọn nhiều tuyến cùng lúc ----------
+    const multi = L.layerGroup().addTo(map);
+    const MCOL = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#00a3a3', '#f032e6', '#9a6324', '#800000', '#000075', '#808000', '#ff6f00', '#1b5e20', '#ad1457', '#283593'];
+    let multiNames = [];
+    const multiStyled = [];
+    function clearMulti() {
+        multiStyled.forEach(l => { delete l._multiStyle; if (l !== kchtHighlighted) l.setStyle(lineStyle(l._kchtProps)); });
+        multiStyled.length = 0; multi.clearLayers();
+    }
+    function showMulti(names, fit) {
+        clearMulti(); multiNames = names.slice();
+        let bounds = null;
+        const ext = b => { bounds = bounds ? bounds.extend(b) : L.latLngBounds(b.getSouthWest(), b.getNorthEast()); };
+        names.forEach((n, i) => {
+            const col = MCOL[i % MCOL.length], st = { color: col, weight: 7, opacity: 1 };
+            if (roadIndex[n]) {
+                const l = roadIndex[n]; l._multiStyle = st; l.setStyle(st); multi.addLayer(l); multiStyled.push(l); ext(l.getBounds());
+            } else if (typeof dtLayer !== 'undefined' && dtLayer) {
+                dtLayer.eachLayer(l => {
+                    if (!(l.feature && l.feature.properties.name === n)) return;
+                    const c = L.geoJSON(l.feature, { pane: 'kchtLines', style: () => st });
+                    c.on('click', e => dtClick(e, n)); c.bindTooltip(n, { sticky: true });
+                    multi.addLayer(c); ext(c.getBounds());
+                });
+            }
+        });
+        if (fit !== false && bounds) map.fitBounds(bounds, { padding: [40, 40] });
+        renderMultiLegend();
+    }
+    function multiLink() {
+        return location.origin + location.pathname + '?nhieu=' + encodeURIComponent(multiNames.join('|'));
+    }
+    function renderMultiLegend() {
+        let box = document.getElementById('multi-legend');
+        if (!multiNames.length) { if (box) box.remove(); return; }
+        if (!box) {
+            box = document.createElement('div'); box.id = 'multi-legend';
+            document.body.appendChild(box);
+            L.DomEvent.disableClickPropagation(box); L.DomEvent.disableScrollPropagation(box);
+            box.addEventListener('click', e => {
+                const t = e.target.closest('[data-act]'); if (!t) return;
+                const n = t.dataset.name, act = t.dataset.act;
+                if (act === 'go') { window.zoomToRoad(n); }
+                else if (act === 'del') { showMulti(multiNames.filter(x => x !== n), false); }
+                else if (act === 'all') { showMulti(multiNames); }
+                else if (act === 'clear') { multiNames = []; clearMulti(); renderMultiLegend(); }
+                else if (act === 'edit') { openMultiPicker(); }
+                else if (act === 'link') {
+                    const u = multiLink();
+                    (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => t.textContent = '✔ Đã chép link', () => prompt('Chép đường link:', u));
+                }
+            });
+        }
+        box.innerHTML = `<div class="ml-head"><b>Đang hiện ${multiNames.length} tuyến</b><a href="#" data-act="clear" title="Tắt hết">✕</a></div>
+            <div class="ml-list">${multiNames.map((n, i) => `<div class="ml-item"><span class="ml-sw" style="background:${MCOL[i % MCOL.length]}"></span>
+                <a href="#" data-act="go" data-name="${esc(n)}" title="Phóng tới và xem thông tin">${esc(n)}</a><a href="#" class="ml-x" data-act="del" data-name="${esc(n)}" title="Bỏ tuyến này">✕</a></div>`).join('')}</div>
+            <div class="ml-foot"><button data-act="all">🔍 Xem tất cả</button><button data-act="edit">☑ Sửa danh sách</button><button data-act="link">🔗 Chép link</button></div>`;
+        box.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.preventDefault()));
+    }
+    function openMultiPicker() {
+        const sel = document.getElementById('road-select'); if (!sel) return;
+        const groups2 = [];
+        [...sel.children].forEach(ch => {
+            if (ch.tagName === 'OPTGROUP') groups2.push([ch.label, [...ch.children].map(o => o.value).filter(Boolean)]);
+            else if (ch.value) { if (!groups2.length || groups2[0][0] !== 'Quốc lộ, đường tỉnh') groups2.unshift(['Quốc lộ, đường tỉnh', []]); groups2[0][1].push(ch.value); }
+        });
+        const chosenSet = new Set(multiNames);
+        const old = document.getElementById('multi-modal'); if (old) old.remove();
+        const bg = document.createElement('div'); bg.className = 'sc-modal-bg'; bg.id = 'multi-modal';
+        bg.innerHTML = `<div class="sc-modal" role="dialog" style="max-width:520px;width:94vw"><header><span>☑ Chọn nhiều tuyến</span><button id="mm-x" aria-label="Đóng">×</button></header>
+            <div class="content" style="max-height:62vh;overflow:auto">
+              <input id="mm-q" placeholder="Gõ để lọc tên tuyến…" style="width:100%;box-sizing:border-box;padding:7px;border:1px solid #bbb;border-radius:4px;font-size:14px;margin-bottom:6px">
+              ${groups2.map(([lab, names]) => `<div class="mm-g"><div class="mm-gh"><b>${esc(lab)}</b> <a href="#" data-grp="${esc(lab)}">chọn cả nhóm</a></div>
+                ${names.map(n => `<label class="mm-it" data-grpi="${esc(lab)}"><input type="checkbox" value="${esc(n)}"${chosenSet.has(n) ? ' checked' : ''}> ${esc(n)}</label>`).join('')}</div>`).join('')}
+            </div>
+            <footer><span id="mm-n" style="margin-right:auto;font-size:13px;color:#555"></span><button class="sc-btn" id="mm-none">Bỏ chọn hết</button><button class="sc-btn blue" id="mm-ok">Hiện các tuyến đã chọn</button></footer></div>`;
+        document.body.appendChild(bg);
+        L.DomEvent.disableClickPropagation(bg); L.DomEvent.disableScrollPropagation(bg);
+        const boxes = () => [...bg.querySelectorAll('.mm-it input')];
+        const count = () => { document.getElementById('mm-n').textContent = 'Đã chọn ' + boxes().filter(b => b.checked).length + ' tuyến'; };
+        count();
+        bg.addEventListener('change', count);
+        document.getElementById('mm-q').oninput = function () {
+            const q = this.value.trim().toLowerCase();
+            bg.querySelectorAll('.mm-it').forEach(l => { l.style.display = !q || l.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+        };
+        bg.querySelectorAll('[data-grp]').forEach(a => a.onclick = e => {
+            e.preventDefault();
+            bg.querySelectorAll(`.mm-it[data-grpi="${CSS.escape(a.dataset.grp)}"]`).forEach(l => { if (l.style.display !== 'none') l.querySelector('input').checked = true; });
+            count();
+        });
+        const close = () => bg.remove();
+        document.getElementById('mm-x').onclick = close;
+        document.getElementById('mm-none').onclick = () => { boxes().forEach(b => b.checked = false); count(); };
+        document.getElementById('mm-ok').onclick = () => {
+            // giữ thứ tự đã chọn trước, thêm tuyến mới vào sau
+            const picked = boxes().filter(b => b.checked).map(b => b.value);
+            const names = multiNames.filter(n => picked.includes(n)).concat(picked.filter(n => !multiNames.includes(n)));
+            close(); map.closePopup();
+            if (names.length) showMulti(names); else { multiNames = []; clearMulti(); renderMultiLegend(); }
+        };
+    }
+    function addMultiButton() {
+        const box = document.querySelector('.selector-box');
+        if (!box || document.getElementById('multi-btn')) return;
+        const b = document.createElement('button');
+        b.id = 'multi-btn'; b.type = 'button'; b.textContent = '☑ Chọn nhiều tuyến';
+        b.onclick = openMultiPicker;
+        box.appendChild(b);
+    }
+
     window.KCHT = { ITEMS, fid, add: addItem, remove: removeItem, show: showItem, popupHtml, lineStyle, groups, GROUPS, roadIndex, ready: false };
 
     fetch('KCHT_TTQLHT.geojson?v=20261117')
@@ -411,9 +523,17 @@
                 sel.appendChild(og);
             }
 
+            addMultiButton();
             window.KCHT.ready = true;
             document.dispatchEvent(new Event('kcht-ready'));
             const q = new URLSearchParams(location.search);
+            if (q.get('nhieu')) {
+                const want = q.get('nhieu').split('|').map(x => x.trim()).filter(Boolean);
+                (function waitDt(n) {   // chờ DT.geojson (QL/ĐT) tải xong
+                    if ((typeof dtLayer !== 'undefined' && dtLayer && dtLayer.getLayers().length) || n > 120) showMulti(want);
+                    else setTimeout(() => waitDt(n + 1), 250);
+                })(0);
+            }
             if (q.get('duong') && roadIndex[q.get('duong')]) {
                 if (sel) sel.value = q.get('duong');
                 focusRoad(q.get('duong'));
@@ -453,6 +573,22 @@
     css.textContent = `
         .kcht-km div { font-size: 10px; font-weight: bold; color: #fff; background: rgba(0,0,0,.65);
             padding: 0 3px; border-radius: 3px; white-space: nowrap; transform: translate(-50%, -50%); display: inline-block; }
+        #multi-btn { display: block; width: 100%; margin-top: 6px; padding: 7px; border: 1px solid #1565c0; background: #e3f2fd; color: #0d47a1;
+            border-radius: 5px; font-weight: bold; font-size: 13px; cursor: pointer; }
+        #multi-legend { position: fixed; left: 10px; bottom: 80px; z-index: 1000; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.35);
+            width: 250px; max-width: 70vw; font: 13px sans-serif; }
+        #multi-legend .ml-head { display: flex; justify-content: space-between; padding: 7px 10px; border-bottom: 1px solid #eee; }
+        #multi-legend .ml-head a { color: #c62828; text-decoration: none; font-weight: bold; }
+        #multi-legend .ml-list { max-height: 34vh; overflow-y: auto; padding: 4px 6px; }
+        #multi-legend .ml-item { display: flex; align-items: center; gap: 6px; padding: 3px 2px; }
+        #multi-legend .ml-sw { flex: 0 0 22px; height: 6px; border-radius: 3px; }
+        #multi-legend .ml-item a { flex: 1; color: #222; text-decoration: none; }
+        #multi-legend .ml-item a:hover { text-decoration: underline; }
+        #multi-legend .ml-item a.ml-x { flex: 0 0 auto; color: #999; }
+        #multi-legend .ml-foot { display: flex; gap: 4px; padding: 6px; border-top: 1px solid #eee; }
+        #multi-legend .ml-foot button { flex: 1; font-size: 11px; padding: 5px 2px; border: 1px solid #90a4ae; background: #fff; border-radius: 4px; cursor: pointer; }
+        .mm-g { margin: 6px 0 10px; } .mm-gh { margin: 4px 0; font-size: 13px; } .mm-gh a { font-size: 12px; margin-left: 6px; }
+        .mm-it { display: block; padding: 4px 2px; font-size: 13px; border-bottom: 1px solid #f2f2f2; cursor: pointer; }
         .kcht-cau span { font-size: 16px; text-shadow: 0 0 2px #fff, 0 0 2px #fff; line-height: 16px; }
         .kcht-popup table { max-width: 340px; }
         .kcht-popup td { vertical-align: top; }
