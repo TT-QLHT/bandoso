@@ -577,6 +577,15 @@
         document.body.appendChild(s);
     });
 
+    // (18/11/2026) Tự nạp kiểu hiển thị ranh giới, tên phường/xã giống bando.danang.gov.vn (phuong_xa.js)
+    window.addEventListener('load', function () {
+        if (window.__phuongXaLoaded || document.querySelector('script[src*="phuong_xa.js"]')) return;
+        window.__phuongXaLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'phuong_xa.js?v=20261118';
+        document.body.appendChild(s);
+    });
+
     // CSS riêng cho lớp KCHT
     const css = document.createElement('style');
     css.textContent = `
