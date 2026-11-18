@@ -568,6 +568,15 @@
         document.body.appendChild(s);
     });
 
+    // (18/11/2026) Tự nạp lớp hồ sơ hoàn công (hoan_cong.js)
+    window.addEventListener('load', function () {
+        if (window.__hoanCongLoaded || document.querySelector('script[src*="hoan_cong.js"]')) return;
+        window.__hoanCongLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'hoan_cong.js?v=20261118';
+        document.body.appendChild(s);
+    });
+
     // CSS riêng cho lớp KCHT
     const css = document.createElement('style');
     css.textContent = `
