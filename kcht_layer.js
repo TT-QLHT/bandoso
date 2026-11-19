@@ -352,13 +352,27 @@
         if (lop === 'coc_km') cocAll.addLayer(layer);
         else if (groups[gk]) groups[gk].addLayer(layer);
         // do_thi, tuyen_moi: chỉ lưu vào roadIndex, hiện khi được chọn
+        // (19/11/2026) Mọi tuyến VẼ MỚI (đoạn đô thị, đoạn QL/ĐT, tuyến khác) cũng đưa vào ô "Chọn tên đường"
+        if (lop === 'do_thi' || lop === 'tuyen_moi') layer._roadKey = f.properties.ten;
+        else if (LINE_LOP[lop] && (String(id).indexOf('moi-') === 0 || f.properties._moi) && f.properties.ten) {
+            let key = f.properties.ten;
+            if (roadIndex[key] && roadIndex[key] !== layer) key = key + ' – ' + LINE_LOP[lop];
+            roadIndex[key] = layer; layer._roadKey = key;
+        }
         ITEMS[id] = { f: f, layer: layer };
         return ITEMS[id];
     }
+    const LINE_LOP = { do_thi_doan: 'đoạn bổ sung', ql_doan: 'đoạn QL bổ sung', dt_doan: 'đoạn ĐT bổ sung', khac_duong: 'tuyến bổ sung' };
     function addRoadOption(name) {
         const sel = document.getElementById('road-select');
-        if (!sel || !roadOptGroup || [...sel.options].some(o => o.value === name)) return;
-        const o = document.createElement('option'); o.value = name; o.textContent = name; roadOptGroup.appendChild(o);
+        if (!name || !sel || !roadOptGroup || [...sel.options].some(o => o.value === name)) return;
+        const o = document.createElement('option'); o.value = name; o.textContent = name;
+        const after = [...roadOptGroup.children].find(x => x.value.localeCompare(name, 'vi') > 0);   // giữ thứ tự A-Z
+        roadOptGroup.insertBefore(o, after || null);
+    }
+    function removeRoadOption(name) {
+        const sel = document.getElementById('road-select'); if (!sel || !name || roadIndex[name]) return;
+        [...sel.options].forEach(o => { if (o.value === name && o.parentNode === roadOptGroup) o.remove(); });
     }
     function removeItem(id) {
         const it = ITEMS[id]; if (!it) return null;
@@ -366,6 +380,8 @@
         [cocAll, chosen, dtChosen, segHighlight].concat(Object.values(groups)).forEach(g => { if (g.hasLayer(layer)) g.removeLayer(layer); });
         if (map.hasLayer(layer)) map.removeLayer(layer);
         if (roadIndex[p.ten] === layer) delete roadIndex[p.ten];
+        if (layer._roadKey && roadIndex[layer._roadKey] === layer) delete roadIndex[layer._roadKey];
+        removeRoadOption(layer._roadKey || p.ten);
         if (segByRoute[p.tuyen]) segByRoute[p.tuyen] = segByRoute[p.tuyen].filter(l => l !== layer);
         if (kchtHighlighted === layer) kchtHighlighted = null;
         delete ITEMS[id];
@@ -375,7 +391,7 @@
         id = id || fid(f);
         if (ITEMS[id]) removeItem(id);
         const it = placeItem(f, id);
-        if (it && (f.properties.lop === 'do_thi' || f.properties.lop === 'tuyen_moi')) addRoadOption(f.properties.ten);
+        if (it && it.layer._roadKey) addRoadOption(it.layer._roadKey);
         return it;
     }
     function showItem(id, open) {
