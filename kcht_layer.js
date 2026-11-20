@@ -635,7 +635,7 @@
         if (window.__pcttAdminLoaded || document.querySelector('script[src*="pctt_admin.js"]')) return;
         window.__pcttAdminLoaded = true;
         const s = document.createElement('script');
-        s.src = 'pctt_admin.js?v=20261118b';
+        s.src = 'pctt_admin.js?v=20261120';
         document.body.appendChild(s);
     });
 

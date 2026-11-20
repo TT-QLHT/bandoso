@@ -1,5 +1,7 @@
 // =====================================================================
 // CHỈNH SỬA ĐIỂM NGUY HIỂM MÙA MƯA BÃO (PCTT) NGAY TRÊN BẢN ĐỒ (bổ sung 11/2026)
+// (20/11/2026) Ẩn nhanh: nút "🙈 Ẩn điểm này" ngay trong bảng thông tin của điểm (quản trị viên);
+//              mục "Điểm đã ẩn" có nút "👁 Hiện lại" cho từng điểm.
 // (18/11/2026) Thêm điểm ngập nước / sạt lở mới: nút trong bảng PCTT, chuột phải (nhấn giữ) lên bản đồ,
 //              hoặc nút "🛠 Quản trị bản đồ" (ban_do_admin.js);
 //              sửa được tên tuyến của điểm.
@@ -101,7 +103,8 @@
     window.pcttHazardPopup = function (p, latlng) {
         let html = origPopup(p, latlng);
         if (canEdit() && p && p.ma) {
-            const btn = `<button type="button" class="pa-edit-btn" onclick="pcttAdminEdit('${esc(p.ma)}')">✏️ Chỉnh sửa điểm này</button>`;
+            let btn = `<button type="button" class="pa-edit-btn" onclick="pcttAdminEdit('${esc(p.ma)}')">✏️ Chỉnh sửa điểm này</button>`;
+            if (isAdmin()) btn += `<button type="button" class="pa-hide-btn" onclick="pcttAdminHide('${esc(p.ma)}', true)">🙈 Ẩn điểm này khỏi bản đồ</button>`;
             html = html.replace(/<\/div>\s*$/, btn + '</div>');
         }
         return html;
@@ -203,6 +206,38 @@
         function msg(t, type) { const el = document.getElementById('pa-msg'); el.textContent = t; el.className = 'pa-msg ' + type; }
     };
 
+    // ---------- (20/11/2026) Ẩn / hiện lại nhanh một điểm (quản trị viên) ----------
+    function dataOf(it, an) {
+        const p = it.feature.properties, ll = it.layer.getLatLng ? it.layer.getLatLng() : null;
+        const tt = Object.assign({}, p.thong_tin || {});
+        if (p.tuyen) tt['Tuyến'] = p.tuyen;
+        Object.keys(SYNC).forEach(k => { if (p[k]) tt[SYNC[k]] = p[k]; });
+        return {
+            ten: p.ten || '', ly_trinh: p.ly_trinh || '', phan_loai: p.phan_loai || '', danh_gia_nguy_co: p.danh_gia_nguy_co || '',
+            dia_phuong: p.dia_phuong || '', giai_phap_de_xuat: p.giai_phap_de_xuat || '', ket_qua_xac_nhan: p.ket_qua_xac_nhan || '',
+            ho_so_lien_quan: p.ho_so_lien_quan || '', lat: ll ? ll.lat.toFixed(6) : '', lng: ll ? ll.lng.toFixed(6) : '',
+            thong_tin: tt, an: an ? 'co' : ''
+        };
+    }
+    window.pcttAdminHide = async function (ma, an) {
+        if (!isAdmin()) { toast('Chỉ quản trị viên được ẩn / hiện lại điểm', 'err'); return; }
+        if (serverOk === false) { toast('Máy chủ Apps Script chưa được cập nhật (Code.gs phiên bản 1.2 trở lên)', 'err'); return; }
+        const it = an ? pcttHazardByMa[ma] : hidden[ma];
+        if (!it) { toast('Không tìm thấy điểm ' + ma, 'err'); return; }
+        const p = it.feature.properties;
+        if (an && !confirm(`Ẩn điểm ${ma}${p.ten ? ' – ' + p.ten : ''} khỏi bản đồ?\n\nĐiểm không bị xóa: quản trị viên vẫn hiện lại được ở mục "Điểm đã ẩn" cuối bảng "Điểm nguy hiểm mùa mưa bão".`)) return;
+        map.closePopup();
+        toast(an ? 'Đang ẩn điểm ' + ma + '…' : 'Đang hiện lại điểm ' + ma + '…', 'ok');
+        try {
+            const r = await fetch(API, { method: 'POST', body: JSON.stringify({ action: 'pctt_save', token: session().token, ma: ma, data: dataOf(it, an) }) });
+            const d = await r.json();
+            if (!d.ok) throw new Error(d.code === 'UNKNOWN_ACTION' ? 'Máy chủ Apps Script chưa được cập nhật Code.gs phiên bản 1.2' : (d.message || d.code));
+            applyOne(d.item); refresh();
+            if (!an) { const it2 = pcttHazardByMa[ma]; if (it2) { if (!map.hasLayer(pcttGroups[it2.group])) map.addLayer(pcttGroups[it2.group]); setTimeout(() => it2.layer.openPopup && it2.layer.openPopup(), 300); } }
+            toast(an ? `Đã ẩn điểm ${ma}` : `Đã hiện lại điểm ${ma}`);
+        } catch (e) { toast('CHƯA LƯU: ' + e.message, 'err'); }
+    };
+
     // ---------- Mục "Điểm đã ẩn" cho quản trị viên ----------
     function renderAdminLink() {
         const body = document.querySelector('#pctt-panel .pctt-body');
@@ -211,8 +246,17 @@
         const n = Object.keys(hidden).length;
         if (!isAdmin() || !n) { if (a) a.remove(); return; }
         if (!a) { a = document.createElement('div'); a.id = 'pa-hidden-link'; a.className = 'pa-hidden-link'; body.appendChild(a); }
-        a.innerHTML = `👁 Điểm đã ẩn (${n}): ` + Object.keys(hidden).map(m => `<a href="#" data-ma="${esc(m)}">${esc(m)}</a>`).join(', ');
-        a.onclick = e => { const t = e.target.closest('a[data-ma]'); if (t) { e.preventDefault(); pcttAdminEdit(t.dataset.ma); } };
+        const open = a.dataset.open === '1';
+        a.innerHTML = `<div class="pa-hl-head">🙈 Điểm đã ẩn (${n}) <span>${open ? '▾' : '▸'}</span></div>` + (open ? '<ul>' + Object.keys(hidden).map(m => {
+            const p = hidden[m].feature.properties;
+            return `<li><b>${esc(m)}</b>${p.ten ? ' – ' + esc(p.ten) : ''}<br><button type="button" data-show="${esc(m)}">👁 Hiện lại</button> <button type="button" data-edit="${esc(m)}">✏️ Sửa</button></li>`;
+        }).join('') + '</ul>' : '');
+        a.onclick = e => {
+            const t = e.target;
+            if (t.closest('.pa-hl-head')) { a.dataset.open = open ? '0' : '1'; renderAdminLink(); return; }
+            const sh = t.closest('[data-show]'); if (sh) { pcttAdminHide(sh.dataset.show, false); return; }
+            const ed = t.closest('[data-edit]'); if (ed) pcttAdminEdit(ed.dataset.edit);
+        };
     }
 
     // ---------- (18/11/2026) Lối tắt thêm điểm ngập / sạt lở ----------
@@ -274,7 +318,12 @@
         .pa-note { font-size: 12px; color: #555; margin-bottom: 4px; }
         .pa-chk { display: block; margin: 10px 0; font-size: 13px; color: #b71c1c; font-weight: bold; }
         .pa-msg { font-size: 13px; margin-top: 6px; } .pa-msg.err { color: #c62828; } .pa-msg.info { color: #1565c0; }
-        .pa-hidden-link { font-size: 12px; margin-top: 6px; color: #555; }
+        .pa-hidden-link { font-size: 12px; margin-top: 8px; color: #555; border: 1px dashed #b0bec5; border-radius: 5px; padding: 5px 7px; }
+        .pa-hidden-link .pa-hl-head { cursor: pointer; font-weight: bold; color: #37474f; display: flex; justify-content: space-between; }
+        .pa-hidden-link ul { list-style: none; margin: 6px 0 0; padding: 0; max-height: 180px; overflow-y: auto; }
+        .pa-hidden-link li { padding: 4px 0; border-top: 1px solid #eee; }
+        .pa-hidden-link li button { margin-top: 3px; border: 1px solid #90a4ae; background: #fff; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+        .pa-hide-btn { margin-top: 6px; width: 100%; background: #fff; color: #b71c1c; border: 1px solid #e57373; border-radius: 5px; padding: 6px; font-weight: bold; cursor: pointer; }
         .pa-picking { cursor: crosshair !important; }
         .pa-picking .leaflet-map-pane > .leaflet-pane, .pa-picking .leaflet-map-pane > .leaflet-pane * { pointer-events: none !important; }
         .pa-add { display: flex; gap: 6px; margin: 4px 0 8px; }
