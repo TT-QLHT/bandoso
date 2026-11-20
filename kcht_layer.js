@@ -1,4 +1,6 @@
-// PHIÊN BẢN 18/11/2026 (2) – chọn nhiều tuyến cùng lúc (nút "☑ Chọn nhiều tuyến", link ?nhieu=A|B)
+// PHIÊN BẢN 20/11/2026 – bật lớp QL/ĐT theo danh mục thì hiện luôn tên tuyến; "Chọn loại bản đồ" chỉ mở khi bấm;
+//   nạp pctt_dot.js (mục điểm nguy hiểm bổ sung theo năm)
+// (18/11/2026 (2)) – chọn nhiều tuyến cùng lúc (nút "☑ Chọn nhiều tuyến", link ?nhieu=A|B)
 // (18/11/2026) – mã định danh đối tượng + giao diện chỉnh sửa cho quản trị viên (ban_do_admin.js)
 // (17/11/2026 (4)) – tuyến được chọn nằm trên ranh giới phường, bấm lại vẫn hiện thông tin
 // (17/11/2026 (3)) – bảng thông tin gọn; chọn tuyến thì phóng tới và tự mở bảng thông tin
@@ -515,6 +517,68 @@
         box.appendChild(b);
     }
 
+    // ---------- (20/11/2026) Tên tuyến QL/ĐT tự hiện khi bật lớp "đoạn theo danh mục" ----------
+    const routeLabels = L.layerGroup().addTo(map);
+    function routeShort(t) {
+        t = String(t || '').trim();
+        const m = t.match(/^Qu[ốo]c l[ộo]\s*(.+)$/i);
+        return m ? 'QL.' + m[1].replace(/^\./, '') : t;
+    }
+    function updateRouteLabels() {
+        routeLabels.clearLayers();
+        if (map.getZoom() < 9) return;
+        const view = map.getBounds().pad(-0.04), placed = [];
+        [['ql_doan', 'ql'], ['dt_doan', 'dt']].forEach(([k, cls]) => {
+            if (!map.hasLayer(groups[k])) return;
+            const byRoute = {};
+            groups[k].eachLayer(l => {
+                const p = l._kchtProps; if (!p) return;
+                const t = p.tuyen || p.ten; (byRoute[t] = byRoute[t] || []).push(l);
+            });
+            Object.keys(byRoute).forEach(t => {
+                const pts = [];
+                byRoute[t].forEach(l => l.eachLayer(pl => {
+                    let x = pl.getLatLngs(); while (x.length && Array.isArray(x[0])) x = [].concat(...x);
+                    x.forEach(q => { if (view.contains(q)) pts.push(q); });
+                }));
+                if (!pts.length) return;
+                // số nhãn theo độ dài phần tuyến đang thấy trên màn hình (1–4 nhãn)
+                const P = pts.map(q => map.latLngToContainerPoint(q));
+                let span = 0; P.forEach(a => { span = Math.max(span, a.distanceTo(P[0])); });
+                const n = Math.max(1, Math.min(4, Math.round(span / 420)));
+                for (let i = 0; i < n; i++) {
+                    const j = Math.min(pts.length - 1, Math.floor((i + 0.5) * pts.length / n));
+                    const a = P[j];
+                    if (placed.some(b => b.distanceTo(a) < 140)) continue;
+                    placed.push(a);
+                    L.marker(pts[j], {
+                        pane: 'kchtPoints', interactive: false, keyboard: false,
+                        icon: L.divIcon({ className: 'kcht-rlabel', html: `<span class="${cls}">${esc(routeShort(t))}</span>`, iconSize: [0, 0] })
+                    }).addTo(routeLabels);
+                }
+            });
+        });
+    }
+    map.on('moveend zoomend overlayadd overlayremove', updateRouteLabels);
+
+    // ---------- (20/11/2026) "Chọn loại bản đồ": chỉ mở khi BẤM, không mở khi rê chuột ----------
+    (function clickOnlyLayerControl() {
+        const lc = layerControl, c = lc.getContainer && lc.getContainer();
+        if (!c) return;
+        L.DomEvent.off(c, { mouseenter: lc._expandSafely, mouseleave: lc.collapse }, lc);
+        if (lc._expand) L.DomEvent.off(c, { mouseenter: lc._expand, mouseleave: lc.collapse }, lc);   // Leaflet bản cũ
+        const list = c.querySelector('.leaflet-control-layers-list');
+        if (list && !c.querySelector('.lc-head')) {
+            const head = L.DomUtil.create('div', 'lc-head');
+            head.innerHTML = '<b>Chọn loại bản đồ</b><a href="#" class="lc-close" title="Đóng bảng">✕ Đóng</a>';
+            list.insertBefore(head, list.firstChild);
+            head.querySelector('.lc-close').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); lc.collapse(); });
+        }
+        // bấm lại vào nút khi đang mở thì đóng
+        const link = c.querySelector('.leaflet-control-layers-toggle');
+        if (link) link.setAttribute('title', 'Bấm để chọn loại bản đồ, lớp hiển thị');
+    })();
+
     window.KCHT = { ITEMS, fid, add: addItem, remove: removeItem, show: showItem, popupHtml, lineStyle, groups, GROUPS, roadIndex, ready: false };
 
     fetch('KCHT_TTQLHT.geojson?v=20261117')
@@ -575,6 +639,15 @@
         document.body.appendChild(s);
     });
 
+    // (20/11/2026) Tự nạp mục "Điểm nguy hiểm bổ sung theo năm" (pctt_dot.js)
+    window.addEventListener('load', function () {
+        if (window.__pcttDotLoaded || document.querySelector('script[src*="pctt_dot.js"]')) return;
+        window.__pcttDotLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'pctt_dot.js?v=20261120';
+        document.body.appendChild(s);
+    });
+
     // (18/11/2026) Tự nạp chức năng chỉnh sửa bản đồ cho quản trị viên (ban_do_admin.js)
     window.addEventListener('load', function () {
         if (window.__banDoAdminLoaded || document.querySelector('script[src*="ban_do_admin.js"]')) return;
@@ -627,6 +700,13 @@
         .kcht-popup table { max-width: 340px; }
         .kcht-popup td { vertical-align: top; }
         .kcht-popup td:last-child { padding-left: 8px; }
-        .kcht-popup h4 { white-space: normal !important; max-width: 340px; }`;
+        .kcht-popup h4 { white-space: normal !important; max-width: 340px; }
+        .kcht-rlabel span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font: bold 12px/1.25 Arial, sans-serif;
+            padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.92); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+        .kcht-rlabel span.ql { color: #c62828; border: 1.5px solid #e60000; }
+        .kcht-rlabel span.dt { color: #0d47a1; border: 1.5px solid #0050e6; }
+        .leaflet-control-layers .lc-head { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+            padding: 2px 0 6px; margin-bottom: 4px; border-bottom: 1px solid #ddd; font-size: 13px; }
+        .leaflet-control-layers .lc-head a { color: #c62828; text-decoration: none; font-weight: bold; font-size: 12px; }`;
     document.head.appendChild(css);
 })();

@@ -1,0 +1,31 @@
+{
+  "type": "FeatureCollection",
+  "name": "MAU - doi ten file thanh PCTT_2026.geojson roi tai len GitHub. Xoa diem vi du nay truoc khi dung.",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [108.123456, 16.012345] },
+      "properties": {
+        "nhom": "nguy_hiem",
+        "nam": 2026,
+        "ma": "N26-001",
+        "ten": "Ví dụ: Ngập sâu đoạn qua cầu ABC",
+        "tuyen": "ĐT.601",
+        "ly_trinh": "Km5+200",
+        "phan_loai": "Ngập nước",
+        "danh_gia_nguy_co": "Nguy cơ cao",
+        "dia_phuong": "Phường Hòa Khánh",
+        "thong_tin": {
+          "Mô tả sự cố": "Ngập 0,5 m khi mưa lớn kéo dài",
+          "Lực lượng": "",
+          "Vật tư, thiết bị": "",
+          "Đơn vị thực hiện/phối hợp": "",
+          "Phương án phân luồng": ""
+        },
+        "giai_phap_de_xuat": "",
+        "ket_qua_xac_nhan": "",
+        "nguon": "Rà soát mùa mưa bão 2026"
+      }
+    }
+  ]
+}
